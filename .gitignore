@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env & secrets
+.env
+*.local
+
+# App data (file-based DB — never commit real statements/cards)
+backend/data/*.json
+!backend/data/.gitkeep
+
+# Git personal credentials (belt-and-suspenders; lives in .git/ anyway)
+.personal-credentials
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
