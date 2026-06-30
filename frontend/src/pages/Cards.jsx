@@ -4,6 +4,7 @@ import { api } from "../api.js";
 const EMPTY = {
   issuer: "", name: "", annual_fee: 0, waiver_threshold: 0,
   base_points_per_100: 0, rupee_per_point: 1, statement_password: "",
+  base_monthly_cap: 0, bonus_monthly_cap: 0,
   merchant_bonuses: [],
 };
 
@@ -67,6 +68,10 @@ export default function Cards() {
           <div><label>Conversion: ₹ per point</label><input type="number" step="0.01" value={form.rupee_per_point} onChange={set("rupee_per_point")} /></div>
         </div>
         <div className="row">
+          <div><label>Base reward cap / month (pts, 0 = none)</label><input type="number" value={form.base_monthly_cap} onChange={set("base_monthly_cap")} /></div>
+          <div><label>Bonus reward cap / month (pts, 0 = none)</label><input type="number" value={form.bonus_monthly_cap} onChange={set("bonus_monthly_cap")} /></div>
+        </div>
+        <div className="row">
           <div style={{ flex: 1 }}>
             <label>Statement PDF password (stored encrypted)</label>
             <input value={form.statement_password} onChange={set("statement_password")} placeholder="optional" />
@@ -101,6 +106,10 @@ export default function Cards() {
               <div className="muted">
                 Base {c.base_points_per_100}/₹100 · 1 pt = ₹{c.rupee_per_point} ·
                 fee ₹{c.annual_fee} (waive at ₹{c.waiver_threshold})
+              </div>
+              <div className="muted">
+                Monthly caps: base {c.base_monthly_cap ? `${c.base_monthly_cap} pts` : "none"} ·
+                bonus {c.bonus_monthly_cap ? `${c.bonus_monthly_cap} pts` : "none"}
               </div>
               {c.merchant_bonuses?.length > 0 && (
                 <div className="muted">Bonuses: {c.merchant_bonuses.map((b) => `${b.merchant} ${b.points_per_100}/₹100`).join(", ")}</div>

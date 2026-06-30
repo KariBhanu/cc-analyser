@@ -44,7 +44,7 @@ export default function BestCard() {
           <h3>Ranking for {rupee(result.amount)} at {result.merchant || "any merchant"}</h3>
           <table>
             <thead>
-              <tr><th>#</th><th>Card</th><th>Points/₹100</th><th>₹/point</th><th>Est. reward</th></tr>
+              <tr><th>#</th><th>Card</th><th>Points/₹100</th><th>₹/point</th><th>Est. reward</th><th>Monthly cap</th></tr>
             </thead>
             <tbody>
               {result.ranking.map((r, i) => (
@@ -53,12 +53,14 @@ export default function BestCard() {
                   <td>{r.issuer} {r.name}{i === 0 ? " 🏆" : ""}</td>
                   <td>{r.points_per_100}</td>
                   <td>{r.rupee_per_point}</td>
-                  <td>{rupee(r.estimated_reward)}</td>
+                  <td>{rupee(r.estimated_reward)}{r.capped ? " ⚠️" : ""}</td>
+                  <td>{r.monthly_cap_rupees ? rupee(r.monthly_cap_rupees) : "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {result.ranking.length === 0 && <p className="muted">Add some cards first.</p>}
+          <p className="muted">⚠️ = reward limited by the card's monthly cap (assumes no other spend this month).</p>
         </div>
       )}
     </>

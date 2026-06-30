@@ -47,16 +47,18 @@ async def best_card(
     cards = store.list("cards", user)
     ranked = []
     for c in cards:
-        rate = rewards.reward_rate_for_merchant(c, merchant)
-        v100 = rewards.value_per_100(c, merchant)
+        rpp = float(c.get("rupee_per_point", 1.0))
+        est = rewards.capped_reward_for_spend(c, amount, merchant)
         ranked.append({
             "card_id": c["id"],
             "issuer": c.get("issuer"),
             "name": c.get("name"),
-            "points_per_100": rate,
-            "rupee_per_point": float(c.get("rupee_per_point", 1.0)),
-            "value_per_100": v100,
-            "estimated_reward": amount / 100.0 * v100,
+            "points_per_100": est["rate"],
+            "rupee_per_point": rpp,
+            "value_per_100": rewards.value_per_100(c, merchant),
+            "estimated_reward": est["points"] * rpp,        # cap applied
+            "capped": est["capped"],
+            "monthly_cap_rupees": (est["cap_points"] * rpp) if est["cap_points"] is not None else None,
         })
     ranked.sort(key=lambda r: r["estimated_reward"], reverse=True)
     return {"merchant": merchant, "amount": amount, "ranking": ranked}

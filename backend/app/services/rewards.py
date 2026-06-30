@@ -3,6 +3,16 @@ from datetime import date, datetime
 from typing import Optional
 
 
+def is_bonus_merchant(card: dict, merchant: Optional[str]) -> bool:
+    """True if the merchant matches one of the card's accelerated (bonus) merchants."""
+    if not merchant:
+        return False
+    return any(
+        b.get("merchant", "").strip().lower() == merchant.strip().lower()
+        for b in card.get("merchant_bonuses", [])
+    )
+
+
 def reward_rate_for_merchant(card: dict, merchant: Optional[str]) -> float:
     """Points per Rs.100 for a merchant, falling back to the card's base rate."""
     if merchant:
@@ -10,6 +20,23 @@ def reward_rate_for_merchant(card: dict, merchant: Optional[str]) -> float:
             if b.get("merchant", "").strip().lower() == merchant.strip().lower():
                 return float(b.get("points_per_100", 0))
     return float(card.get("base_points_per_100", 0))
+
+
+def capped_reward_for_spend(card: dict, amount: float, merchant: Optional[str] = None) -> dict:
+    """Reward for a single spend, applying the relevant monthly cap.
+
+    The cap is the BONUS cap for accelerated merchants, else the BASE cap. We treat
+    it as a ceiling on this spend assuming a fresh month (no other spend yet) -- a
+    deliberate v1 simplification for the "best card" what-if comparison.
+    """
+    rate = reward_rate_for_merchant(card, merchant)
+    points = amount / 100.0 * rate
+    cap = card.get("bonus_monthly_cap") if is_bonus_merchant(card, merchant) else card.get("base_monthly_cap")
+    cap = float(cap) if cap else None
+    capped = bool(cap is not None and points > cap)
+    if capped:
+        points = cap
+    return {"rate": rate, "points": points, "capped": capped, "cap_points": cap}
 
 
 def points_for_spend(card: dict, spend: float, merchant: Optional[str] = None) -> float:
