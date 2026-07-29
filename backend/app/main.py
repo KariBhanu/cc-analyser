@@ -4,9 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
-from .routers import auth, cards, dashboard, statements
+from .routers import assistant, auth, cards, dashboard, statements
 
-app = FastAPI(title="cc-analyser", version="0.1.0")
+app = FastAPI(title="SmartCred", version="0.1.0")
 
 # Session cookie holds the logged-in user. Signed with APP_SECRET.
 app.add_middleware(SessionMiddleware, secret_key=settings.app_secret, same_site="lax")
@@ -24,6 +24,7 @@ app.include_router(auth.router)
 app.include_router(cards.router)
 app.include_router(statements.router)
 app.include_router(dashboard.router)
+app.include_router(assistant.router)
 
 
 @app.get("/api/health")

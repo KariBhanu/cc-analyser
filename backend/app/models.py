@@ -37,6 +37,31 @@ class CardUpdate(BaseModel):
     statement_cycle_day: Optional[int] = None
 
 
+class SignupIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field(..., max_length=254)
+    phone: str = Field(..., max_length=20)      # Indian mobile; normalised to +91XXXXXXXXXX
+    password: str = Field(..., min_length=8, max_length=200)
+
+
+class LoginIn(BaseModel):
+    email: str = Field(..., max_length=254)
+    password: str = Field(..., max_length=200)
+
+
+class VerifyOtpIn(BaseModel):
+    channel: str = Field(..., pattern="^(email|phone)$")
+    code: str = Field(..., min_length=4, max_length=10)
+
+
+class ResendOtpIn(BaseModel):
+    channel: str = Field(..., pattern="^(email|phone)$")
+
+
+class AssistantQuery(BaseModel):
+    query: str = Field(..., max_length=500)   # free text; parsed by services/assistant.py
+
+
 class StatementIn(BaseModel):
     card_id: str
     period_start: Optional[str] = None  # ISO date string

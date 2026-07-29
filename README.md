@@ -1,4 +1,4 @@
-# 💳 cc-analyser
+# 💳 SmartCred
 
 A personal web app to track **credit card spend, rewards, and annual-fee waivers** —
 built for **Indian credit cards**. You log in with Google, add your cards and their

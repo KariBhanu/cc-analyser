@@ -1,9 +1,252 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cc-analyser</title>
+    <title>SmartCred</title>
+
+    <!-- Design tokens from the Stitch project "CardWise India" (9483052485409349717).
+         Kept verbatim from the screen exports so the app and the mockups agree. -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              background: "#0f172a",
+              "on-background": "#f1f5f9",
+              surface: "#0f172a",
+              "surface-dim": "#0f172a",
+              "surface-bright": "#1e293b",
+              "surface-variant": "#1e293b",
+              "surface-tint": "#565e74",
+              "surface-container-lowest": "#020617",
+              "surface-container-low": "#1e293b",
+              "surface-container": "#1e293b",
+              "surface-container-high": "#1e293b",
+              "surface-container-highest": "#334155",
+              "on-surface": "#f1f5f9",
+              "on-surface-variant": "#94a3b8",
+              "inverse-surface": "#f1f5f9",
+              "inverse-on-surface": "#f3f0f2",
+              outline: "#475569",
+              "outline-variant": "#334155",
+              primary: "#10b981",
+              "on-primary": "#ffffff",
+              "primary-container": "#1e293b",
+              "on-primary-container": "#94a3b8",
+              "primary-fixed": "#10b981",
+              "primary-fixed-dim": "#10b981",
+              "on-primary-fixed": "#dae2fd",
+              "on-primary-fixed-variant": "#94a3b8",
+              "inverse-primary": "#10b981",
+              secondary: "#6366f1",
+              "on-secondary": "#ffffff",
+              "secondary-container": "#4338ca",
+              "on-secondary-container": "#e0e7ff",
+              "secondary-fixed": "#c7d2fe",
+              "secondary-fixed-dim": "#818cf8",
+              "on-secondary-fixed": "#e0e7ff",
+              "on-secondary-fixed-variant": "#818cf8",
+              tertiary: "#10b981",
+              "on-tertiary": "#ffffff",
+              "tertiary-container": "#1a1c1e",
+              "on-tertiary-container": "#a7f3d0",
+              "tertiary-fixed": "#6ee7b7",
+              "tertiary-fixed-dim": "#34d399",
+              "on-tertiary-fixed": "#064e3b",
+              "on-tertiary-fixed-variant": "#059669",
+              error: "#ef4444",
+              "on-error": "#ffffff",
+              "error-container": "#7f1d1d",
+              "on-error-container": "#fecaca",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "9999px",
+            },
+            spacing: {
+              base: "8px",
+              gutter: "16px",
+              "stack-sm": "4px",
+              "stack-md": "12px",
+              "stack-lg": "24px",
+              "container-padding": "24px",
+              "max-width-desktop": "1280px",
+            },
+            fontFamily: {
+              "headline-lg": ["Space Grotesk"],
+              "headline-lg-mobile": ["Space Grotesk"],
+              "label-md": ["JetBrains Mono"],
+              "display-lg": ["Space Grotesk"],
+              "body-lg": ["JetBrains Mono"],
+              "headline-md": ["Space Grotesk"],
+              "numeric-data": ["JetBrains Mono"],
+              "body-md": ["JetBrains Mono"],
+              "body-sm": ["JetBrains Mono"],
+            },
+            fontSize: {
+              "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.04em", fontWeight: "700" }],
+              "headline-lg-mobile": ["24px", { lineHeight: "30px", fontWeight: "700" }],
+              "label-md": ["13px", { lineHeight: "18px", letterSpacing: "0.1em", fontWeight: "600" }],
+              "display-lg": ["48px", { lineHeight: "52px", letterSpacing: "-0.05em", fontWeight: "800" }],
+              "body-lg": ["18px", { lineHeight: "26px", fontWeight: "400" }],
+              "headline-md": ["20px", { lineHeight: "26px", letterSpacing: "-0.02em", fontWeight: "600" }],
+              "numeric-data": ["24px", { lineHeight: "32px", letterSpacing: "-0.05em", fontWeight: "700" }],
+              "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }],
+              "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      .glass-card {
+        background: rgba(30, 41, 59, 0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+      }
+      .card-hover {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .card-hover:hover {
+        transform: translateY(-2px);
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+      .progress-bar-bg {
+        background-color: #1e293b;
+      }
+      .text-gradient {
+        background: linear-gradient(135deg, #ffffff 0%, #10b981 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      /* Emerald rail marking the primary panel on a screen. */
+      .accent-border {
+        border-left: 2px solid #10b981;
+      }
+      /* Material Symbols ship unfilled; the designs fill the active nav/status icons. */
+      .icon-fill {
+        font-variation-settings: "FILL" 1;
+      }
+      /* Used by the mobile bottom nav so the bar clears the iOS home indicator. */
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+
+      /* ── "AI Assistant Terminal" screen ── */
+      .glow-border {
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .response-card {
+        background: rgba(15, 23, 42, 0.8);
+        border-left: 3px solid #10b981;
+        position: relative;
+        overflow: hidden;
+      }
+      .response-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.05) 0%, transparent 100%);
+        pointer-events: none;
+      }
+      .scan-line {
+        width: 100%;
+        height: 2px;
+        background: rgba(16, 185, 129, 0.2);
+        position: absolute;
+        animation: scan 4s linear infinite;
+      }
+      @keyframes scan {
+        0% { top: 0; }
+        100% { top: 100%; }
+      }
+      .cursor-blink {
+        animation: blink 1s step-end infinite;
+      }
+      @keyframes blink {
+        50% { opacity: 0; }
+      }
+      .terminal-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .terminal-scroll::-webkit-scrollbar-track {
+        background: #020617;
+      }
+      .terminal-scroll::-webkit-scrollbar-thumb {
+        background: #1e293b;
+        border-radius: 2px;
+      }
+      .terminal-scroll::-webkit-scrollbar-thumb:hover {
+        background: #10b981;
+      }
+      /* ── Auth screens (Login / Signup / Verify) ── */
+      .auth-backdrop {
+        background:
+          radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.08), transparent 45%),
+          radial-gradient(circle at 80% 85%, rgba(99, 102, 241, 0.08), transparent 45%),
+          #020617;
+      }
+      .auth-panel {
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      }
+      .auth-input {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #f1f5f9;
+        transition: all 0.3s ease;
+      }
+      .auth-input:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        outline: none;
+      }
+      /* Drifting card/coin glyphs behind the auth panels. */
+      .drift {
+        position: absolute;
+        pointer-events: none;
+        z-index: 0;
+        color: rgba(16, 185, 129, 0.25);
+        animation: drift-down linear infinite;
+      }
+      @keyframes drift-down {
+        0% { transform: translateY(-150px) rotate(0deg); opacity: 0; }
+        10%, 90% { opacity: 0.5; }
+        100% { transform: translateY(110vh) rotate(180deg); opacity: 0; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .scan-line,
+        .cursor-blink,
+        .drift {
+          animation: none;
+        }
+        .drift {
+          display: none;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
