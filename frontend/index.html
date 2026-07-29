@@ -228,7 +228,11 @@
         pointer-events: none;
         z-index: 0;
         color: rgba(16, 185, 129, 0.25);
-        animation: drift-down linear infinite;
+        /* `backwards` so a glyph adopts the 0% keyframe (opacity 0) during any
+           delay. Without it the default `none` fill-mode leaves it painted with
+           its base styles — untransformed and fully opaque — parked at the top
+           of the screen until the animation kicks in. */
+        animation: drift-down linear infinite backwards;
       }
       @keyframes drift-down {
         0% { transform: translateY(-150px) rotate(0deg); opacity: 0; }

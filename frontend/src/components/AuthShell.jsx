@@ -12,14 +12,21 @@ function Backdrop() {
   // doesn't restart every keystroke.
   const bits = useMemo(
     () =>
-      Array.from({ length: 18 }, (_, i) => ({
-        key: i,
-        glyph: GLYPHS[i % GLYPHS.length],
-        left: `${Math.random() * 100}%`,
-        delay: `${Math.random() * 20}s`,
-        duration: `${15 + Math.random() * 15}s`,
-        scale: 0.5 + Math.random() * 1.1,
-      })),
+      Array.from({ length: 18 }, (_, i) => {
+        const duration = 15 + Math.random() * 15;
+        return {
+          key: i,
+          glyph: GLYPHS[i % GLYPHS.length],
+          left: `${Math.random() * 100}%`,
+          // Negative delay, seeded from this glyph's own duration, so it starts
+          // already partway through its fall. The first painted frame shows the
+          // glyphs spread down the screen; a positive delay would instead stack
+          // them all at the top until their timer elapsed.
+          delay: `${-Math.random() * duration}s`,
+          duration: `${duration}s`,
+          scale: 0.5 + Math.random() * 1.1,
+        };
+      }),
     []
   );
 
