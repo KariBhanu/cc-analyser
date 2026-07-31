@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { Alert, Button, Chip, EmptyState, Field, Input, Select } from "../components/ui.jsx";
+import { rupee } from "../format.js";
+import { Alert, Button, Chip, Combobox, EmptyState, Field, Input, Spinner } from "../components/ui.jsx";
 
 // Two ways in: drop a statement PDF (parsed into a draft you confirm), or type the
 // figures manually. Layout follows the "Upload Statement" Stitch screen — one
@@ -21,6 +22,10 @@ export default function Upload() {
   const [manual, setManual] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [duplicate, setDuplicate] = useState(null); // 409 payload
+  const [saving, setSaving] = useState(false);
+  const [reading, setReading] = useState(false);
+
 
   useEffect(() => {
     api.listCards().then((cs) => {
@@ -49,6 +54,8 @@ export default function Upload() {
     e.preventDefault();
     setError(""); setMsg(""); setParsed(null);
     if (!file) return setError("Choose a PDF first.");
+    if (reading) return;
+    setReading(true);
     const fd = new FormData();
     fd.append("card_id", cardId);
     fd.append("file", file);
@@ -60,17 +67,30 @@ export default function Upload() {
         return;
       }
       setParsed(res);
-      setDraft((d) => ({ ...d, total_spend: res.guessed_total ?? "" }));
+      // Only overwrite fields the parser actually found, so a partial parse
+      // doesn't wipe anything already typed. Dates arrive ISO, which is what
+      // <input type="date"> expects.
+      setDraft((d) => ({
+        ...d,
+        total_spend: res.guessed_total ?? d.total_spend,
+        points_earned: res.guessed_points ?? d.points_earned,
+        period_start: res.period_start ?? d.period_start,
+        period_end: res.period_end ?? d.period_end,
+      }));
       setManual(true);
       setMsg("PDF read. Check the numbers below and save.");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setReading(false);
     }
   }
 
-  async function save(e) {
-    e.preventDefault();
-    setError(""); setMsg("");
+  async function save(e, replace = false) {
+    if (e) e.preventDefault();
+    if (saving) return;              // a second click would save twice
+    setError(""); setMsg(""); setDuplicate(null);
+    setSaving(true);
     try {
       await api.createStatement({
         card_id: cardId,
@@ -79,17 +99,41 @@ export default function Upload() {
         period_start: draft.period_start || null,
         period_end: draft.period_end || null,
         note: draft.note || null,
-      });
-      setMsg("Statement saved.");
+        // Rows read from the PDF, so the Statements page can list them.
+        transactions: parsed?.transactions || [],
+      }, replace);
       setParsed(null);
       setFile(null);
       setDraft({ total_spend: "", points_earned: "", period_start: "", period_end: "", note: "" });
+      // Straight to the dashboard — the updated spend and reward totals are the
+      // real confirmation, so `saved` just drives a one-off banner there rather
+      // than a message on a page the user is leaving.
+      navigate("/", {
+        replace: true,
+        state: { saved: replace ? "Statement replaced." : "Statement saved." },
+      });
     } catch (err) {
-      setError(err.message);
+      // 409 means this card already has a statement for this period. Offer to
+      // overwrite rather than silently double-counting the spend.
+      if (err.status === 409 && err.detail?.duplicate) setDuplicate(err.detail);
+      else setError(err.message);
+    } finally {
+      // Reached even on the success path, where we've already navigated away;
+      // harmless, and it means no path can leave the button stuck spinning.
+      setSaving(false);
     }
   }
 
   const setD = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
+
+  // Which of the three parsed values didn't come through, for the hint below.
+  const missing = !parsed
+    ? []
+    : [
+        parsed.guessed_total == null && "the total",
+        parsed.guessed_points == null && "reward points",
+        !parsed.period_end && "the statement period",
+      ].filter(Boolean);
 
   if (cards.length === 0) {
     return (
@@ -125,6 +169,30 @@ export default function Upload() {
       <div className="w-full space-y-4 mb-stack-lg">
         <Alert>{error}</Alert>
         <Alert kind="ok">{msg}</Alert>
+        {duplicate && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-4 py-3 space-y-3">
+            <p className="font-body-sm text-[12px] text-amber-300 m-0 flex items-start gap-2">
+              <span className="material-symbols-outlined text-base shrink-0">warning</span>
+              {duplicate.message}
+            </p>
+            <p className="font-body-sm text-[11px] text-slate-500 m-0">
+              Existing: {rupee(duplicate.existing_total || 0)}
+              {duplicate.existing_period_end ? ` · ends ${duplicate.existing_period_end}` : ""}.
+              Replacing overwrites its figures and transactions.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={() => save(null, true)} disabled={saving}>
+                {saving ? <Spinner /> : (
+                  <span className="material-symbols-outlined text-base">sync</span>
+                )}
+                {saving ? "Replacing…" : "Replace it"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setDuplicate(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ───── Main card ───── */}
@@ -137,12 +205,23 @@ export default function Upload() {
 
         <form onSubmit={doUpload} className="space-y-stack-lg">
           {/* Which card */}
-          <Field label="Which card is this statement for?">
-            <Select value={cardId} onChange={(e) => setCardId(e.target.value)}>
-              {cards.map((c) => (
-                <option key={c.id} value={c.id}>{c.issuer} {c.name}</option>
-              ))}
-            </Select>
+          <Field
+            label="Which card is this statement for?"
+            hint={cards.length > 4 ? "Type to search" : undefined}
+          >
+            <Combobox
+              options={cards.map((c) => ({
+                value: c.id,
+                label: `${c.issuer} ${c.name}`,
+                // Flag cards with no saved password: leaving the password box
+                // blank only works when one is stored against the card.
+                hint: c.has_password ? "password saved" : "no password",
+              }))}
+              value={cardId}
+              onChange={setCardId}
+              placeholder="Search your cards…"
+              emptyText="No matching card"
+            />
           </Field>
 
           {/* Dropzone */}
@@ -192,17 +271,90 @@ export default function Upload() {
             />
           </Field>
 
-          <Button type="submit" className="w-full">
-            <span className="material-symbols-outlined text-base">document_scanner</span> Read PDF
+          <Button type="submit" className="w-full" disabled={reading}>
+            {reading ? <Spinner /> : (
+              <span className="material-symbols-outlined text-base">document_scanner</span>
+            )}
+            {reading ? "Reading PDF…" : "Read PDF"}
           </Button>
 
           {parsed && (
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              <Chip tone="emerald">total: {parsed.guessed_total ?? "—"}</Chip>
-              {parsed.dates?.length ? (
-                parsed.dates.map((d) => <Chip key={d}>{d}</Chip>)
-              ) : (
-                <Chip>no dates found</Chip>
+            <div className="space-y-3 pt-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip tone={parsed.guessed_total != null ? "emerald" : "slate"}>
+                  total: {parsed.guessed_total ?? "—"}
+                </Chip>
+                <Chip tone={parsed.guessed_points != null ? "emerald" : "slate"}>
+                  points: {parsed.guessed_points ?? "—"}
+                </Chip>
+                <Chip tone={parsed.period_start || parsed.period_end ? "emerald" : "slate"}>
+                  period: {parsed.period_start || "—"} → {parsed.period_end || "—"}
+                </Chip>
+                <Chip tone={parsed.transactions?.length ? "emerald" : "slate"}>
+                  transactions: {parsed.transactions?.length || 0}
+                </Chip>
+              </div>
+
+              {/* Let the rows be checked before saving — they're what the
+                  Statements page will show. */}
+              {parsed.transactions?.length > 0 && (
+                <details className="rounded border border-slate-800 bg-slate-950/60" open>
+                  <summary className="cursor-pointer px-3 py-2 font-label-md text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300">
+                    {parsed.transactions.length} transactions read — check before saving
+                  </summary>
+                  <div className="max-h-56 overflow-auto border-t border-slate-800/60">
+                    {parsed.transactions.map((t, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 px-3 py-2 border-b border-slate-800/30 last:border-b-0"
+                      >
+                        <span className="font-body-sm text-[10px] text-slate-600 w-20 shrink-0">
+                          {t.date || "—"}
+                        </span>
+                        <span className="font-label-md text-[11px] text-slate-300 w-24 shrink-0 truncate">
+                          {t.merchant}
+                        </span>
+                        <span className="font-body-sm text-[10px] text-slate-600 flex-1 min-w-0 truncate">
+                          {t.description}
+                        </span>
+                        <span
+                          className={`font-numeric-data text-[12px] shrink-0 ${
+                            t.credit ? "text-emerald-400" : "text-slate-200"
+                          }`}
+                        >
+                          {t.credit ? "+" : ""}₹{t.amount.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {/* Name what's missing and show the text we read — otherwise a
+                  "—" looks like a dead end rather than something fixable. */}
+              {missing.length > 0 && (
+                <Alert kind="warn">
+                  {parsed.no_text
+                    ? "No text could be read from this PDF — it's probably a scan or image. Enter the figures manually below."
+                    : `We couldn't find ${missing.join(", ")} in this statement's wording. Fill ${
+                        missing.length > 1 ? "them" : "it"
+                      } in below.`}
+                </Alert>
+              )}
+
+              {parsed.text_preview && missing.length > 0 && (
+                <details className="rounded border border-slate-800 bg-slate-950/60">
+                  <summary className="cursor-pointer px-3 py-2 font-label-md text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300">
+                    Show the text we read from the PDF
+                  </summary>
+                  <pre className="max-h-64 overflow-auto px-3 pb-3 font-body-sm text-[11px] leading-relaxed text-slate-400 whitespace-pre-wrap break-words m-0">
+                    {parsed.text_preview}
+                  </pre>
+                  <p className="px-3 pb-3 font-body-sm text-[10px] text-slate-600 m-0">
+                    If the value is visible here, its label just isn't one we look for
+                    yet — it can be added.
+                  </p>
+                </details>
               )}
             </div>
           )}
@@ -266,8 +418,11 @@ export default function Upload() {
                 <Input value={draft.note} onChange={setD("note")} placeholder="e.g. May statement" />
               </Field>
             </div>
-            <Button type="submit" className="w-full">
-              <span className="material-symbols-outlined text-base">save</span> Save Statement
+            <Button type="submit" className="w-full" disabled={saving}>
+              {saving ? <Spinner /> : (
+                <span className="material-symbols-outlined text-base">save</span>
+              )}
+              {saving ? "Saving statement…" : "Save Statement"}
             </Button>
           </form>
         )}

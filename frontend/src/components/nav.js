@@ -5,5 +5,5 @@ export const NAV = [
   { to: "/cards", label: "Cards", short: "Cards", icon: "credit_card" },
   { to: "/best-card", label: "Best Card", short: "Best", icon: "star" },
   { to: "/assistant", label: "Assistant", short: "Ask", icon: "smart_toy" },
-  { to: "/upload", label: "Statements", short: "Add", icon: "receipt_long" },
+  { to: "/statements", label: "Statements", short: "Spends", icon: "receipt_long" },
 ];

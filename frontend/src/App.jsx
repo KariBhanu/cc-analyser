@@ -7,6 +7,7 @@ import Verify from "./pages/Verify.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Cards from "./pages/Cards.jsx";
 import Upload from "./pages/Upload.jsx";
+import Statements from "./pages/Statements.jsx";
 import BestCard from "./pages/BestCard.jsx";
 import Assistant from "./pages/Assistant.jsx";
 import Sidebar from "./components/Sidebar.jsx";
@@ -78,6 +79,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/cards" element={<Cards />} />
+            <Route path="/statements" element={<Statements />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/best-card" element={<BestCard />} />
             <Route path="/assistant" element={<Assistant />} />

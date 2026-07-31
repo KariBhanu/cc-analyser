@@ -1,16 +1,33 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { pct, rupee, rupeeShort } from "../format.js";
-import { CARD_ACCENTS as ACCENTS } from "../components/ui.jsx";
+import { Alert, CARD_ACCENTS as ACCENTS } from "../components/ui.jsx";
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const { state } = useLocation();
+  const navigate = useNavigate();
+  const [saved, setSaved] = useState(state?.saved || "");
 
   useEffect(() => {
     api.summary().then(setData).catch((e) => setError(e.message));
   }, []);
+
+  // Drop the flash message from history so a refresh or a Back/Forward doesn't
+  // resurrect a stale "Statement saved."
+  useEffect(() => {
+    if (state?.saved) navigate(".", { replace: true, state: null });
+  }, [state, navigate]);
+
+  // Auto-dismiss: the updated totals below are the real confirmation, so the
+  // banner shouldn't outstay its usefulness.
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(""), 4000);
+    return () => clearTimeout(t);
+  }, [saved]);
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <p className="font-body-md text-slate-400">Loading…</p>;
@@ -27,6 +44,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {saved && <Alert kind="ok">{saved}</Alert>}
+
       {/* ───── Stat tiles ───── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Total rewards */}
