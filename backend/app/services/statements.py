@@ -191,6 +191,22 @@ _SUMMARY_COLUMNS = ("opening", "closing", "redeemed", "balance", "adjusted", "ex
 _EARNED_HEADER = re.compile(r"\b((?:reward\s+|bonus\s+)?points\s+earned|earned)\b")
 
 
+def _earned_by_balance(numbers: list) -> Optional[float]:
+    """`earned` from a four-figure reward row, confirmed by its own arithmetic.
+
+    Every reward summary balances: previous + earned - redeemed = closing. So
+    for SBI's "1674 40 740 974" the canonical column order is the only reading
+    that adds up, which both picks out `earned` (40) and proves it. Returning
+    None when it doesn't balance keeps this from guessing.
+    """
+    if len(numbers) != 4:
+        return None
+    previous, earned, redeemed, closing = numbers
+    if abs(previous + earned - redeemed - closing) < 0.01:
+        return earned
+    return None
+
+
 def _points_from_table(lines: list) -> Optional[float]:
     """Read the "Earned" column out of a Reward Points Summary table.
 
@@ -222,16 +238,28 @@ def _points_from_table(lines: list) -> Optional[float]:
         #   2,174 355 0 0
         #
         # so keep looking until a row's number count matches the columns.
-        for nxt in lines[i + 1: i + 5]:
+        for nxt in lines[i + 1: i + 6]:
+            if not re.search(r"\d", nxt):
+                # A short wordy line with no figures is a wrapped column title
+                # -- SBI splits "Redeemed/Expired /Forfeited" around its header
+                # row. Anything longer is prose, and the table is behind us.
+                if len(nxt.split()) <= 3:
+                    continue
+                break
             # More than a stray letter or two means we've run past the table.
             if len(re.findall(r"[A-Za-z]", nxt)) > 3:
                 break
-            numbers = _POINTS.findall(nxt)
-            # Require an exact column/value match. A blank cell shifts every
-            # index after it, so anything else means we cannot say which number
-            # is which -- better to return nothing than a confident wrong one.
+            numbers = [_to_float(n) for n in _POINTS.findall(nxt)]
+            # Prefer an exact column/value match.
             if len(numbers) == len(columns):
-                return _to_float(numbers[index])
+                return numbers[index]
+            # Otherwise fall back to the balance equation. SBI's header wraps so
+            # badly that its columns can't be counted reliably, but a reward
+            # summary always satisfies previous + earned - redeemed = closing,
+            # which both identifies "earned" and proves the reading is right.
+            balanced = _earned_by_balance(numbers)
+            if balanced is not None:
+                return balanced
     return None
 
 
@@ -376,8 +404,15 @@ _TXN_AMOUNT = re.compile(
     # long reference number: "BOOKING REF 1234567890123" must not read as
     # 890,123.
     r"(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+\.\d{2}|(?<!\d)\d{1,6})"
-    r"\s*(CR|DR|Cr|Dr)?\s*$"
+    # SBI marks rows with single letters from its own legend rather than Cr/Dr:
+    # C=Credit, D=Debit, M=Monthly Installment, T=Temporary Credit, plus EN,
+    # FP, EMD, BT. Longest alternatives first so "CR" wins over "C".
+    # Case-insensitive: HDFC and Axis write "Cr"/"Dr", SBI writes bare "C"/"D".
+    r"\s*((?i:CR|DR|EMD|EN|FP|BT|C|D|M|T))?\s*$"
 )
+
+# Markers that mean money came IN. Everything else is a debit.
+_CREDIT_MARKERS = {"cr", "c", "t"}
 
 # HDFC prefixes many rows with a transaction time; it's noise in the description.
 _LEADING_TIME = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
@@ -462,7 +497,7 @@ def extract_transactions(text: str) -> list:
         # fallback for banks that print no marker at all. Otherwise a row like
         # "REFUND PROCESSING FEE 100.00 Dr" would be booked as money in.
         if marker:
-            credit = marker == "cr"
+            credit = marker in _CREDIT_MARKERS
         else:
             credit = any(h in low for h in _CREDIT_HINTS)
 
