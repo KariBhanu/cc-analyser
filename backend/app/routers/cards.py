@@ -1,4 +1,5 @@
-"""Credit card catalog -- entirely user-entered in v1."""
+"""A user's own cards. Reward terms come from the bundled catalog; the user
+picks which card they hold and supplies only the statement password."""
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..deps import get_current_user, store
 from ..models import CardIn, CardUpdate
 from ..security import encrypt
+from ..services import catalog
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
 
@@ -27,6 +29,13 @@ async def list_cards(user: str = Depends(get_current_user)):
 @router.post("", status_code=201)
 async def create_card(body: CardIn, user: str = Depends(get_current_user)):
     record = body.model_dump(exclude={"statement_password"})
+    if body.catalog_slug:
+        # Resolve server-side: the client sends only which card this is, so it
+        # can't submit terms that disagree with the catalog.
+        terms = catalog.terms_for(body.catalog_slug)
+        if terms is None:
+            raise HTTPException(400, f"Unknown catalog card {body.catalog_slug!r}")
+        record.update(terms)
     record["id"] = uuid4().hex
     record["user"] = user
     if body.statement_password:

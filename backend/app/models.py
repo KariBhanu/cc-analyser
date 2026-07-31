@@ -12,6 +12,10 @@ class MerchantBonus(BaseModel):
 class CardIn(BaseModel):
     issuer: str                         # e.g. "HDFC"
     name: str                           # e.g. "Millennia"
+    # When set, every reward term below is filled from backend/catalog rather
+    # than trusted from the client -- the user only tells us which card they
+    # hold. Left optional so a hand-entered card still works.
+    catalog_slug: Optional[str] = None
     annual_fee: float = 0
     waiver_threshold: float = 0         # annual spend (Rs) that waives the fee; 0 = none
     base_points_per_100: float = 0      # default reward points per Rs.100
@@ -21,6 +25,10 @@ class CardIn(BaseModel):
     bonus_monthly_cap: Optional[float] = None   # max BONUS (partner) reward points/month, shared
     statement_password: Optional[str] = None   # plaintext in; stored encrypted
     statement_cycle_day: Optional[int] = None  # day of month the statement generates
+    # When the card was opened. The annual fee is assessed on the card's own
+    # membership year (anniversary to anniversary), not the financial year, so
+    # the waiver can't be tracked accurately without this.
+    opened_on: Optional[str] = None            # "YYYY-MM" (preferred) or "YYYY-MM-DD"
 
 
 class CardUpdate(BaseModel):
@@ -35,6 +43,7 @@ class CardUpdate(BaseModel):
     bonus_monthly_cap: Optional[float] = None
     statement_password: Optional[str] = None
     statement_cycle_day: Optional[int] = None
+    opened_on: Optional[str] = None
 
 
 class SignupIn(BaseModel):
@@ -62,6 +71,14 @@ class AssistantQuery(BaseModel):
     query: str = Field(..., max_length=500)   # free text; parsed by services/assistant.py
 
 
+class Transaction(BaseModel):
+    date: Optional[str] = None          # ISO date string
+    description: str = ""
+    merchant: Optional[str] = None      # short label, e.g. "Swiggy"
+    amount: float = 0
+    credit: bool = False                # refund / payment, not spend
+
+
 class StatementIn(BaseModel):
     card_id: str
     period_start: Optional[str] = None  # ISO date string
@@ -69,3 +86,4 @@ class StatementIn(BaseModel):
     total_spend: float
     points_earned: Optional[float] = None  # if omitted, estimated from spend x rate
     note: Optional[str] = None
+    transactions: list[Transaction] = []

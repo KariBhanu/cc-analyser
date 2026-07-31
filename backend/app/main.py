@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
-from .routers import assistant, auth, cards, dashboard, statements
+from .routers import assistant, auth, cards, catalog, dashboard, statements
 
 app = FastAPI(title="SmartCred", version="0.1.0")
 
@@ -22,6 +22,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(cards.router)
+app.include_router(catalog.router)
 app.include_router(statements.router)
 app.include_router(dashboard.router)
 app.include_router(assistant.router)

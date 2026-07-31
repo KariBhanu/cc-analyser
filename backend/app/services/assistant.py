@@ -183,7 +183,7 @@ def _optimize(query: str, cards: list[dict], statements: list[dict], amount: Opt
         )
     # The design showed "milestone" progress; here it's the real fee-waiver threshold.
     cs = [s for s in statements if s.get("card_id") == bc.get("id")]
-    w = rewards.fee_waiver_status(bc, rewards.spend_in_current_fy(cs))
+    w = rewards.fee_waiver_status(bc, rewards.waiver_window(bc, cs))
     if w["applicable"] and not w["waived"]:
         after = min(1.0, (w["fy_spend"] + spend) / w["threshold"])
         parts.append(
@@ -204,7 +204,7 @@ def _waiver(cards: list[dict], statements: list[dict]) -> dict:
     tracked = []
     for c in cards:
         cs = [s for s in statements if s.get("card_id") == c.get("id")]
-        w = rewards.fee_waiver_status(c, rewards.spend_in_current_fy(cs))
+        w = rewards.fee_waiver_status(c, rewards.waiver_window(c, cs))
         if w["applicable"]:
             tracked.append((c, w))
 

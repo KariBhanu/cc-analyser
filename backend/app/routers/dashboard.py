@@ -21,7 +21,7 @@ async def summary(user: str = Depends(get_current_user)):
         cs = [s for s in statements if s.get("card_id") == c["id"]]
         spend = sum(float(s.get("total_spend", 0)) for s in cs)
         reward = sum(float(s.get("reward_value", 0)) for s in cs)
-        fy_spend = rewards.spend_in_current_fy(cs)
+        window = rewards.waiver_window(c, cs)
         per_card.append({
             "card_id": c["id"],
             "issuer": c.get("issuer"),
@@ -29,7 +29,7 @@ async def summary(user: str = Depends(get_current_user)):
             "total_spend": spend,
             "total_reward": reward,
             "statement_count": len(cs),
-            "fee_waiver": rewards.fee_waiver_status(c, fy_spend),
+            "fee_waiver": rewards.fee_waiver_status(c, window),
         })
         grand_spend += spend
         grand_reward += reward
