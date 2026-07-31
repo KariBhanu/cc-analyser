@@ -8,3 +8,7 @@ pdfplumber==0.11.5
 cryptography==44.0.0
 python-dotenv==1.0.1
 pydantic==2.10.4
+# psycopg 3.3+ requires Python >= 3.10; these are the newest that still build
+# on the 3.9 that ships with macOS Command Line Tools.
+psycopg[binary]==3.2.13
+psycopg-pool==3.2.8

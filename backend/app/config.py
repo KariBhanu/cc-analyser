@@ -18,6 +18,11 @@ class Settings:
     data_dir: Path = Path(os.getenv("DATA_DIR", str(_BASE_DIR / "data")))
     dev_login: bool = os.getenv("DEV_LOGIN", "true").lower() == "true"
 
+    # Postgres connection string. Unset => fall back to JSON files in data_dir.
+    # Use the *pooled* endpoint: a connection per request exhausts the direct
+    # endpoint's limit quickly.
+    database_url: str = os.getenv("DATABASE_URL", "")
+
     # Email delivery for verification codes. Gmail: smtp.gmail.com:587 with an
     # App Password (see services/mailer.py). Unset => codes are logged, not sent.
     smtp_host: str = os.getenv("SMTP_HOST", "")

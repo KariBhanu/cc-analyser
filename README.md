@@ -75,8 +75,8 @@ cc-analyser/
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # then edit .env
-uvicorn app.main:app --reload # http://localhost:8000
+cp .env.example .env
+uvicorn app.main:app --reload
 ```
 
 Generate a real secret for `.env`:
@@ -92,7 +92,7 @@ keep it stable, or you'll have to re-enter passwords.
 ```bash
 cd frontend
 npm install
-npm run dev                   # http://localhost:5173
+npm run dev
 ```
 
 ### 3. Logging in

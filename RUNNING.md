@@ -25,14 +25,20 @@ API docs (Swagger): http://localhost:8000/docs
 
 ```bash
 cd backend
-
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
-
-cp .env.example .env               # first time only — see "Configuration" below
+cp .env.example .env
 uvicorn app.main:app --reload
 ```
+
+On Windows the activate line is `.venv\Scripts\activate`. The `cp .env.example .env`
+is first-time only — see [Configuration](#configuration).
+
+> Commands in this file carry no trailing `#` comments on purpose. zsh does **not**
+> treat `#` as a comment in interactive shells, so a pasted `pip install -r
+> requirements.txt  # note` passes `#` to pip and fails with
+> `Invalid requirement: '#'`.
 
 Leave it running. You should see `Application startup complete.` and
 `Uvicorn running on http://127.0.0.1:8000`.
@@ -91,7 +97,8 @@ except `APP_SECRET`.
 | `GOOGLE_CLIENT_ID` / `_SECRET` | empty | Blank = Google button hidden. |
 | `SMTP_*` | empty | Blank = OTP codes go to the backend log instead of email. |
 | `REQUIRE_PHONE_VERIFICATION` | `false` | Email verification is always required; phone is opt-in. |
-| `DATA_DIR` | `backend/data` | JSON "database". |
+| `DATA_DIR` | `backend/data` | JSON "database", used only when `DATABASE_URL` is unset. |
+| `DATABASE_URL` | empty | Postgres DSN. Set = Postgres, unset = JSON files. Use the **pooled** endpoint. |
 
 Generate a secret:
 
@@ -104,15 +111,57 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ---
 
+## Storage: JSON files or Postgres
+
+The app talks only to `StorageInterface`, so the backend is a config switch:
+
+- **`DATABASE_URL` unset** → JSON files in `backend/data/` (zero setup, single machine)
+- **`DATABASE_URL` set** → Postgres (`app/storage/postgres_store.py`)
+
+Confirm which one is live from the startup line:
+
+```
+INFO:     storage: postgres (ep-xxx.ap-southeast-1.aws.neon.tech)
+INFO:     storage: json files (/path/to/backend/data)
+```
+
+Switching back to JSON is just commenting out `DATABASE_URL` and restarting.
+
+### Moving existing JSON data into Postgres
+
+```bash
+cd backend
+python scripts/migrate_json_to_postgres.py
+python scripts/migrate_json_to_postgres.py --apply
+```
+
+The first run is a dry run and prints a plan. It's idempotent — records already
+present (same collection + id) are skipped, so re-running after a partial
+failure is safe. Your JSON files are left untouched as a fallback.
+
+### Notes
+
+Use the **pooled** connection string. Neon's has `-pooler` or `.c-N.` in the
+hostname. Each request would otherwise open a direct connection and exhaust the
+limit.
+
+Data lives in one `records` table with a JSONB `data` column, keyed by
+`(collection, id)`. It stays queryable — `data->>'total_spend'` works.
+
+Free Postgres tiers generally are **not backed up**. Keep exporting.
+
+---
+
 ## Stopping
 
 `Ctrl-C` in each terminal. If a port is stuck:
 
 ```bash
-# macOS / Linux
-lsof -ti:8000 | xargs kill        # backend
-lsof -ti:5173 | xargs kill        # frontend
+lsof -ti:8000 | xargs kill
+lsof -ti:5173 | xargs kill
 ```
+
+First line frees the backend port, second the frontend (macOS / Linux).
 
 ---
 
@@ -129,6 +178,29 @@ cd backend && rm -rf .venv && python3 -m venv .venv
 source .venv/bin/activate && pip install -r requirements.txt
 ```
 
+### `No matching distribution found for psycopg-binary`
+
+Your Python is too old for the pinned version. macOS Command Line Tools ships
+**Python 3.9**, which is end-of-life and caps you at `psycopg 3.2.x` — 3.3+
+requires 3.10. Check with `python3 --version`.
+
+The pins in `requirements.txt` are chosen to work on 3.9. If you still hit this,
+upgrade Python rather than chasing pins:
+
+```bash
+brew install python@3.12
+cd backend
+rm -rf .venv
+/opt/homebrew/bin/python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### `ModuleNotFoundError: No module named 'psycopg'`
+
+`pip install -r requirements.txt` didn't actually run, or ran into the zsh `#`
+trap above. Re-run it and check for errors before restarting uvicorn.
+
 ### Vite fails with a missing `esbuild` / `rollup` binary
 
 Same portability problem — `node_modules` contains platform-native binaries:
@@ -136,6 +208,14 @@ Same portability problem — `node_modules` contains platform-native binaries:
 ```bash
 cd frontend && rm -rf node_modules && npm install
 ```
+
+Do **not** delete `package-lock.json`, despite what the rollup error message
+suggests. The committed lockfile already contains every platform's optional
+binaries; removing it just churns it for no benefit.
+
+Note that `node_modules` and `.venv` can only be valid for one OS at a time. If
+the repo directory is shared with a container (bind mount), installing on one
+side breaks the other — pick one place to run the app.
 
 ### `npm install` warns "packages have install scripts not yet covered"
 
