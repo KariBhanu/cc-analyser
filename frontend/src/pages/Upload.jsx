@@ -126,13 +126,16 @@ export default function Upload() {
 
   const setD = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
-  // Which of the three parsed values didn't come through, for the hint below.
+  // What didn't come through, for the hint below. Transactions count here too:
+  // a statement whose total, points and period all parse would otherwise show
+  // "transactions: 0" with no way to see why.
   const missing = !parsed
     ? []
     : [
         parsed.guessed_total == null && "the total",
         parsed.guessed_points == null && "reward points",
         !parsed.period_end && "the statement period",
+        !parsed.transactions?.length && "any transactions",
       ].filter(Boolean);
 
   if (cards.length === 0) {
@@ -351,8 +354,12 @@ export default function Upload() {
                     {parsed.text_preview}
                   </pre>
                   <p className="px-3 pb-3 font-body-sm text-[10px] text-slate-600 m-0">
-                    If the value is visible here, its label just isn't one we look for
-                    yet — it can be added.
+                    First 2,000 characters. If the value is visible here, its label just
+                    isn't one we look for yet. For transactions specifically, run{" "}
+                    <code className="text-slate-500">
+                      scripts/inspect_statement.py &lt;pdf&gt; --transactions
+                    </code>{" "}
+                    — it prints every dated line and why each was accepted or rejected.
                   </p>
                 </details>
               )}

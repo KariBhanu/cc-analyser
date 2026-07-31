@@ -134,6 +134,8 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // Measured screen position for the portalled listbox.
+  const [pos, setPos] = useState(null);
   const boxRef = useRef(null);
   const listRef = useRef(null);
 
@@ -146,6 +148,49 @@ export function Combobox({
       `${o.label} ${o.hint || ""} ${o.note || ""}`.toLowerCase().includes(q)
     );
   }, [options, query]);
+
+  /* The listbox is portalled to <body> rather than absolutely positioned in
+     place. `.glass-card` sets backdrop-filter, which creates a stacking
+     context, so an in-place dropdown is trapped inside its own panel and any
+     later glass-card sibling paints over it -- no z-index can win that. A
+     portal leaves the subtree entirely, so it needs its position measured. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const measure = () => {
+      const r = boxRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const below = window.innerHeight - r.bottom;
+      // Flip upward when the space below can't hold the list but above can.
+      const flip = below < 200 && r.top > below;
+      setPos(
+        flip
+          ? { left: r.left, bottom: window.innerHeight - r.top + 4, width: r.width }
+          : { left: r.left, top: r.bottom + 4, width: r.width }
+      );
+    };
+    measure();
+    // Capture phase so scrolling any ancestor keeps the list attached.
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [open, filtered.length]);
+
+  // Clicking outside closes it. The options call preventDefault on mousedown so
+  // the input never blurs, which means blur alone can't be relied on.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (boxRef.current?.contains(e.target)) return;
+      if (listRef.current?.contains(e.target)) return;
+      setOpen(false);
+      setQuery("");
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   // Keep the highlighted row in view while arrowing through a long list.
   useEffect(() => {
@@ -222,11 +267,13 @@ export function Combobox({
         </span>
       </div>
 
-      {open && !disabled && (
+      {open && !disabled && pos && typeof document !== "undefined" &&
+        createPortal(
         <ul
           ref={listRef}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-700 bg-slate-950 py-1 shadow-2xl"
+          style={pos}
+          className="fixed z-[9999] max-h-64 overflow-auto rounded-lg border border-slate-700 bg-slate-950 py-1 shadow-2xl"
         >
           {filtered.length === 0 && (
             <li className="px-3 py-2 font-body-sm text-[12px] text-slate-600">{emptyText}</li>
@@ -264,7 +311,8 @@ export function Combobox({
               </li>
             );
           })}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );
