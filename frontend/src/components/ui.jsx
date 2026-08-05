@@ -322,6 +322,260 @@ export function Input({ className = "", ...props }) {
   return <input {...props} className={`${CONTROL} ${className}`} />;
 }
 
+const DATE_DISPLAY = new Intl.DateTimeFormat("en-IN", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+const MONTH_DISPLAY = new Intl.DateTimeFormat("en-IN", {
+  month: "long",
+  year: "numeric",
+});
+const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null;
+  return parsed;
+}
+
+function isoDate(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfMonth(value) {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+function sameDate(a, b) {
+  return Boolean(
+    a && b
+    && a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate()
+  );
+}
+
+function calendarCells(month) {
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const leading = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
+  const count = new Date(year, monthIndex + 1, 0).getDate();
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = index - leading + 1;
+    return day >= 1 && day <= count ? new Date(year, monthIndex, day) : null;
+  });
+}
+
+// Code-native calendar: unlike <input type="date">, its icon and popup can be
+// styled consistently across browsers and remain readable on the dark theme.
+export function DatePicker({
+  value,
+  onChange,
+  placeholder = "Select date",
+  disabled = false,
+  id,
+}) {
+  const selected = useMemo(() => parseIsoDate(value), [value]);
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => startOfMonth(selected || new Date()));
+  const [pos, setPos] = useState(null);
+  const controlRef = useRef(null);
+  const popupRef = useRef(null);
+  const cells = useMemo(() => calendarCells(month), [month]);
+  const today = new Date();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const measure = () => {
+      const rect = controlRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(320, window.innerWidth - 16);
+      const left = Math.min(
+        Math.max(8, rect.left),
+        Math.max(8, window.innerWidth - width - 8)
+      );
+      const below = window.innerHeight - rect.bottom;
+      const flip = below < 390 && rect.top > below;
+      setPos(
+        flip
+          ? { left, bottom: window.innerHeight - rect.top + 6, width }
+          : { left, top: rect.bottom + 6, width }
+      );
+    };
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (controlRef.current?.contains(event.target)) return;
+      if (popupRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        controlRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function toggle() {
+    if (disabled) return;
+    if (!open) setMonth(startOfMonth(selected || new Date()));
+    setOpen((current) => !current);
+  }
+
+  function choose(day) {
+    onChange(isoDate(day));
+    setOpen(false);
+    requestAnimationFrame(() => controlRef.current?.focus());
+  }
+
+  function moveMonth(delta) {
+    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
+  }
+
+  return (
+    <>
+      <button
+        ref={controlRef}
+        id={id}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={toggle}
+        className={`${CONTROL} flex items-center justify-between gap-3 text-left ${
+          open ? "border-emerald-500/70 ring-1 ring-emerald-500/20" : ""
+        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-emerald-500/40"}`}
+      >
+        <span className={selected ? "text-slate-200" : "text-slate-600"}>
+          {selected ? DATE_DISPLAY.format(selected) : placeholder}
+        </span>
+        <span
+          aria-hidden="true"
+          className={`material-symbols-outlined text-[19px] shrink-0 transition-colors ${
+            open
+              ? "text-emerald-300 icon-fill drop-shadow-[0_0_8px_rgba(16,185,129,0.9)]"
+              : "text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.65)]"
+          }`}
+        >
+          calendar_month
+        </span>
+      </button>
+
+      {open && pos && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popupRef}
+          role="dialog"
+          aria-label="Choose a date"
+          style={{ ...pos, maxHeight: "calc(100vh - 16px)" }}
+          className="fixed z-[9999] overflow-auto rounded-xl border border-emerald-500/40 bg-slate-950 p-4 shadow-[0_0_28px_rgba(16,185,129,0.18)]"
+        >
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <button
+              type="button"
+              onClick={() => moveMonth(-1)}
+              aria-label="Previous month"
+              className="w-9 h-9 p-0 flex items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80 text-slate-400 hover:text-emerald-300 hover:border-emerald-500/40 transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">chevron_left</span>
+            </button>
+            <p className="font-label-md text-[12px] text-emerald-300 tracking-widest m-0">
+              {MONTH_DISPLAY.format(month)}
+            </p>
+            <button
+              type="button"
+              onClick={() => moveMonth(1)}
+              aria-label="Next month"
+              className="w-9 h-9 p-0 flex items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80 text-slate-400 hover:text-emerald-300 hover:border-emerald-500/40 transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">chevron_right</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-1" aria-hidden="true">
+            {WEEKDAYS.map((weekday) => (
+              <span
+                key={weekday}
+                className="h-7 flex items-center justify-center font-label-md text-[9px] text-slate-600 uppercase"
+              >
+                {weekday}
+              </span>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((day, index) => day ? (
+              <button
+                key={isoDate(day)}
+                type="button"
+                onClick={() => choose(day)}
+                aria-label={DATE_DISPLAY.format(day)}
+                aria-pressed={sameDate(day, selected)}
+                className={`aspect-square p-0 flex items-center justify-center rounded-lg border font-body-sm text-[11px] transition-all ${
+                  sameDate(day, selected)
+                    ? "border-emerald-300 bg-emerald-500 text-slate-950 font-bold shadow-[0_0_14px_rgba(16,185,129,0.45)]"
+                    : sameDate(day, today)
+                      ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
+                      : "border-transparent bg-transparent text-slate-400 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+                }`}
+              >
+                {day.getDate()}
+              </button>
+            ) : <span key={`empty-${index}`} aria-hidden="true" />)}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-800/70">
+            <button
+              type="button"
+              disabled={!value}
+              onClick={() => { onChange(""); setOpen(false); }}
+              className="px-2 py-1 bg-transparent border-0 font-label-md text-[9px] uppercase tracking-widest text-slate-600 hover:text-red-400 disabled:opacity-30 transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => choose(today)}
+              className="px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 font-label-md text-[9px] uppercase tracking-widest text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+            >
+              Today
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 export function FileInput({ className = "", ...props }) {
   return (
     <input
@@ -387,16 +641,28 @@ const ALERT_KINDS = {
   warn: ["text-amber-300 bg-amber-950/30 border-amber-500/30", "warning"],
 };
 
-export function Alert({ kind = "error", children }) {
+export function Alert({ kind = "error", children, onDismiss, dismissLabel = "Dismiss notification" }) {
   if (!children) return null;
   const [tone, icon] = ALERT_KINDS[kind] || ALERT_KINDS.error;
   return (
-    <p
+    <div
+      role={kind === "error" ? "alert" : "status"}
       className={`font-body-sm text-[12px] m-0 px-4 py-3 border rounded-lg flex items-center gap-2 ${tone}`}
     >
       <span className="material-symbols-outlined text-base shrink-0">{icon}</span>
-      {children}
-    </p>
+      <span className="flex-1 min-w-0">{children}</span>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+          title={dismissLabel}
+          className="w-7 h-7 p-0 ml-auto shrink-0 flex items-center justify-center rounded-lg border border-transparent bg-transparent text-current opacity-60 hover:opacity-100 hover:border-current transition-all"
+        >
+          <span className="material-symbols-outlined text-[17px]">close</span>
+        </button>
+      )}
+    </div>
   );
 }
 

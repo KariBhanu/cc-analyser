@@ -44,7 +44,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {saved && <Alert kind="ok">{saved}</Alert>}
+      {saved && (
+        <Alert kind="ok" onDismiss={() => setSaved("")} dismissLabel="Dismiss saved message">
+          {saved}
+        </Alert>
+      )}
 
       {/* ───── Stat tiles ───── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -54,6 +54,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(s),
     }),
+  updateStatement: (id, patch) =>
+    req(`/statements/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   deleteStatement: (id) => req(`/statements/${id}`, { method: "DELETE" }),
   uploadStatement: (formData) =>
     fetch(BASE + "/statements/upload", {

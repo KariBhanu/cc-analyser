@@ -87,3 +87,12 @@ class StatementIn(BaseModel):
     points_earned: Optional[float] = None  # if omitted, estimated from spend x rate
     note: Optional[str] = None
     transactions: list[Transaction] = []
+
+
+class StatementUpdate(BaseModel):
+    """Editable statement summary fields; linked transactions stay untouched."""
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    total_spend: float
+    points_earned: Optional[float] = None
+    note: Optional[str] = None

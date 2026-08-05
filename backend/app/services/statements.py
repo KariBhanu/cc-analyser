@@ -30,6 +30,9 @@ _AMOUNT = re.compile(
 # Ordered most specific first: an exact "total amount due" should win over a
 # bare "amount due", which in turn beats "closing balance".
 _TOTAL_KEYWORDS = [
+    # Scapia Federal's summary heading is collapsed to this exact token. Keep
+    # it ahead of generic wording in later terms-and-conditions pages.
+    "totaldue",
     "total amount due",
     "total amount payable",
     "total payment due",
@@ -52,6 +55,10 @@ _TOTAL_EXCLUDE = ("minimum", "min amt", "min due", "previous", "last statement")
 _POINTS = re.compile(r"(?<![\d/\-.])(\d{1,3}(?:,\d{2,3})*|\d+)(?![\d/\-])")
 
 _POINTS_KEYWORDS = [
+    # Scapia Federal renders this without spaces ("Convertedinto158ScapiaCoins").
+    # Label matching below tolerates collapsed whitespace, so the number after
+    # "converted into" is still unambiguous.
+    "converted into",
     # Cashback cards report rupees rather than points; it's the same field to us.
     "cashback earned",
     "total cashback earned",
@@ -81,10 +88,14 @@ _POINTS_EXCLUDE = (
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
 
-# 21/06/2026, 21-06-26, 21.06.2026, 21-Jun-2026, 21 Jun 2026
+# 21/06/2026, 21-Jun-2026, 21 Jun 2026, June 21, 2026
 _DATE = re.compile(
     r"\b(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{2,4})\b"
-    r"|\b(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-,]+(\d{2,4})\b"
+    # Some PDFs collapse all spacing in dates: "15Apr2026". Month lookup and
+    # _iso still validate the apparent date, so optional separators are safe.
+    r"|\b(\d{1,2})[\s\-]*([A-Za-z]{3,9})[\s\-,]*(\d{2,4})\b"
+    # ICICI uses the US-style month-first form: "July 5, 2026".
+    r"|\b([A-Za-z]{3,9})[\s\-]+(\d{1,2})(?:st|nd|rd|th)?[\s,\-]+(\d{2,4})\b"
 )
 
 _PERIOD_KEYWORDS = [
@@ -104,6 +115,18 @@ _END_KEYWORDS = [
 
 def _to_float(s: str) -> float:
     return float(s.replace(",", ""))
+
+
+def _label_match(line: str, keyword: str):
+    """Find a label even when PDF extraction removes its internal spaces.
+
+    Scapia Federal emits labels such as ``TotalDue`` and ``BillingCycle``;
+    other banks retain the spaces. Treat whitespace between the words in our
+    known labels as optional while keeping the match offsets needed by the
+    label/value readers below.
+    """
+    pattern = r"\s*".join(re.escape(word) for word in keyword.split())
+    return re.search(pattern, line, flags=re.IGNORECASE)
 
 
 def _iso(day: int, month: int, year: int) -> Optional[str]:
@@ -128,9 +151,12 @@ def find_dates(text: str) -> list:
     for m in _DATE.finditer(text):
         if m.group(1):
             iso = _iso(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        else:
+        elif m.group(4):
             month = _MONTHS.get(m.group(5)[:3].lower())
             iso = _iso(int(m.group(4)), month, int(m.group(6))) if month else None
+        else:
+            month = _MONTHS.get(m.group(7)[:3].lower())
+            iso = _iso(int(m.group(8)), month, int(m.group(9))) if month else None
         if iso:
             out.append(iso)
     return out
@@ -263,6 +289,41 @@ def _points_from_table(lines: list) -> Optional[float]:
     return None
 
 
+def _points_from_amazon_pay_earnings(lines: list) -> Optional[float]:
+    """Read ICICI Amazon Pay's vertically split earnings summary.
+
+    Its two visual columns are extracted as five separate lines::
+
+        EARNINGS
+        Earnings transfered to
+        Earned
+        Amazon Pay balance*
+        146 146
+
+    The first figure is the left-hand Earned column; the second is the amount
+    transferred to Amazon Pay balance. Requiring the complete section/header
+    keeps an arbitrary pair of integers elsewhere from looking like points.
+    """
+    for i, line in enumerate(lines):
+        if line.strip().lower() != "earnings":
+            continue
+        window = lines[i + 1:i + 8]
+        header = " ".join(window[:3]).lower()
+        if not (
+            re.search(r"\bearned\b", header)
+            and "transfer" in header
+            and "amazon pay balance" in header
+        ):
+            continue
+        for row in window[3:]:
+            if re.search(r"[A-Za-z]", row):
+                continue
+            numbers = [_to_float(number) for number in _POINTS.findall(row)]
+            if len(numbers) == 2:
+                return numbers[0]
+    return None
+
+
 def guess_points(text: str) -> Optional[float]:
     """Reward points earned in this cycle, or None."""
     lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
@@ -272,15 +333,19 @@ def guess_points(text: str) -> Optional[float]:
     if table is not None:
         return table
 
+    amazon_pay = _points_from_amazon_pay_earnings(lines)
+    if amazon_pay is not None:
+        return amazon_pay
+
     for keyword in _POINTS_KEYWORDS:
         if keyword == "earned":
             continue  # bare "earned" only makes sense as a table header
         for i, low in enumerate(lowered):
-            pos = low.find(keyword)
-            if pos == -1 or any(bad in low for bad in _POINTS_EXCLUDE):
+            match = _label_match(lines[i], keyword)
+            if not match or any(bad in low for bad in _POINTS_EXCLUDE):
                 continue
 
-            after = lines[i][pos + len(keyword):]
+            after = lines[i][match.end():]
             found = _POINTS.findall(after)
             if found:
                 return _to_float(found[-1])
@@ -313,11 +378,11 @@ def guess_period(text: str):
 
     for keyword in _PERIOD_KEYWORDS:
         for i, low in enumerate(lowered):
-            pos = low.find(keyword)
-            if pos == -1:
+            match = _label_match(lines[i], keyword)
+            if not match:
                 continue
             # The range may run onto the next line.
-            window = lines[i][pos:] + " " + (lines[i + 1] if i + 1 < len(lines) else "")
+            window = lines[i][match.start():] + " " + (lines[i + 1] if i + 1 < len(lines) else "")
             found = find_dates(window)
             if len(found) >= 2:
                 start, end = found[0], found[1]
@@ -325,13 +390,29 @@ def guess_period(text: str):
 
     for keyword in _END_KEYWORDS:
         for i, low in enumerate(lowered):
-            pos = low.find(keyword)
-            if pos == -1:
+            match = _label_match(lines[i], keyword)
+            if not match:
                 continue
-            found = find_dates(lines[i][pos:])
+            found = find_dates(lines[i][match.start():])
             if found:
                 return (None, found[0])
     return (None, None)
+
+
+def guess_note(period_start: Optional[str], period_end: Optional[str]) -> Optional[str]:
+    """A friendly default such as ``April statement`` from the billing period.
+
+    The cycle end names the statement month: a 22 Dec–21 Jan bill is the
+    January statement. Fall back to the start only when no end was detected.
+    """
+    raw = period_end or period_start
+    if not raw:
+        return None
+    try:
+        month = date.fromisoformat(raw).strftime("%B")
+    except ValueError:
+        return None
+    return f"{month} statement"
 
 
 def amounts_in(line: str) -> list:
@@ -357,22 +438,22 @@ def guess_total(text: str) -> Optional[float]:
 
     for keyword in _TOTAL_KEYWORDS:
         for i, low in enumerate(lowered):
-            pos = low.find(keyword)
-            if pos == -1:
+            match = _label_match(lines[i], keyword)
+            if not match:
                 continue
+            pos = match.start()
             # Reject "Minimum Amount Due" when matching the bare "amount due".
             # Only the words immediately before count -- an unrelated
             # "Previous Balance" earlier on the row must not disqualify it.
             if any(bad in low[max(0, pos - 12) : pos] for bad in _TOTAL_EXCLUDE):
                 continue
 
-            after = lines[i][pos + len(keyword) :]
-            after_low = after.lower()
+            after = lines[i][match.end():]
             cut = len(after)
             for bad in _TOTAL_EXCLUDE:
-                j = after_low.find(bad)
-                if j != -1:
-                    cut = min(cut, j)
+                following_label = _label_match(after, bad)
+                if following_label:
+                    cut = min(cut, following_label.start())
 
             on_line = amounts_in(after[:cut])
             if on_line:
@@ -389,7 +470,10 @@ def guess_total(text: str) -> Optional[float]:
 # date straight after; we keep the first, which is when you actually spent.
 _TXN_LINE = re.compile(
     r"^\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}|\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-,]+\d{2,4})"
-    r"\s+(?:(?:\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\s+)?"   # optional posting date
+    # HDFC separates the date with "|"; Scapia Federal uses a middle dot
+    # directly before the time. Ordinary whitespace remains the common case.
+    r"(?:\s*[|·•]\s*|\s+)"
+    r"(?:(?:\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\s+)?"   # optional posting date
     r"(.+)$"
 )
 
@@ -399,7 +483,10 @@ _TXN_LINE = re.compile(
 # carry neither comma nor decimals. Capped at 6 digits so a trailing reference
 # number can't be mistaken for a sum -- anything larger is comma-grouped anyway.
 _TXN_AMOUNT = re.compile(
-    r"(?:(?:₹|Rs\.?|INR)\s*)?"
+    # HDFC's embedded font maps the rupee glyph to a literal "C". It appears
+    # before the figure; SBI's C=credit marker appears after it and is still
+    # captured by group 2 below.
+    r"(?:(?:₹|Rs\.?|INR|C)\s*)?"
     # The bare-integer branch needs (?<!\d) so it can't bite off the tail of a
     # long reference number: "BOOKING REF 1234567890123" must not read as
     # 890,123.
@@ -409,6 +496,21 @@ _TXN_AMOUNT = re.compile(
     # FP, EMD, BT. Longest alternatives first so "CR" wins over "C".
     # Case-insensitive: HDFC and Axis write "Cr"/"Dr", SBI writes bare "C"/"D".
     r"\s*((?i:CR|DR|EMD|EN|FP|BT|C|D|M|T))?\s*$"
+)
+
+# HDFC appends its Purchase Indicator icon as a stray lowercase "l" after the
+# amount. It is a separate table column, not part of the transaction.
+_TXN_TRAILING_DECORATION = re.compile(r"\s+[l|]\s*$")
+
+# Scapia Federal adds the coins earned as a final integer column. Only discard
+# it when a complete, explicitly currency-prefixed amount sits immediately
+# before it; ordinary round transaction amounts must remain valid. High-value
+# spends can earn comma-formatted coins (for example ``₹99,999.00 10,000``),
+# so the reward column accepts both plain and grouped integers.
+_TXN_CURRENCY_WITH_REWARD = re.compile(
+    r"(?:(?:₹|Rs\.?|INR)\s*)"
+    r"(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+\.\d{2})"
+    r"\s+(?:\d{1,3}(?:,\d{2,3})+|\d{1,6})\s*$"
 )
 
 # Markers that mean money came IN. Everything else is a debit.
@@ -443,7 +545,19 @@ def _trailing_amount(rest: str):
     can't be mistaken for another column.
     """
     found = []
-    head = rest
+    head = _TXN_TRAILING_DECORATION.sub("", rest)
+
+    reward_column = _TXN_CURRENCY_WITH_REWARD.search(head)
+    if reward_column:
+        amount = _to_float(reward_column.group(1))
+        head = head[:reward_column.start()]
+        sign = re.search(r"([+-])\s*$", head)
+        marker = ""
+        if sign:
+            marker = "cr" if sign.group(1) == "+" else "dr"
+            head = head[:sign.start()]
+        return amount, marker, head
+
     while True:
         m = _TXN_AMOUNT.search(head)
         if not m:
@@ -458,6 +572,12 @@ def _trailing_amount(rest: str):
     if not found:
         return None, "", rest
     amount, marker = found[-1]
+    # HDFC and Scapia place +/- before the currency glyph rather than a Cr/Dr
+    # after the number. An explicit suffix remains authoritative if both exist.
+    sign = re.search(r"([+-])\s*$", head)
+    if sign:
+        marker = marker or ("cr" if sign.group(1) == "+" else "dr")
+        head = head[:sign.start()]
     return amount, marker, head
 
 
@@ -572,6 +692,7 @@ def parse_statement(data: bytes, password: Optional[str]) -> dict:
             "ok": True,
             "guessed_total": None,
             "guessed_points": None,
+            "guessed_note": None,
             "period_start": None,
             "period_end": None,
             "dates": [],
@@ -586,6 +707,7 @@ def parse_statement(data: bytes, password: Optional[str]) -> dict:
         "ok": True,
         "guessed_total": guess_total(text),
         "guessed_points": guess_points(text),
+        "guessed_note": guess_note(period_start, period_end),
         # ISO, so the frontend's <input type="date"> can consume them directly.
         "period_start": period_start,
         "period_end": period_end,

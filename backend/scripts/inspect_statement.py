@@ -26,6 +26,7 @@ import pdfplumber  # noqa: E402
 from app.services.statements import (  # noqa: E402
     _TOTAL_KEYWORDS,
     amounts_in,
+    guess_note,
     guess_period,
     guess_points,
     guess_total,
@@ -71,7 +72,8 @@ def _explain_transactions(lines: list) -> int:
     found, knowing which of those two failed is the whole diagnosis.
     """
     from app.services.statements import (
-        _TXN_AMOUNT, _TXN_LINE, _TXN_SKIP, extract_transactions, merchant_of,
+        _LEADING_TIME, _TXN_LINE, _TXN_SKIP, _trailing_amount,
+        extract_transactions, merchant_of,
     )
 
     accepted = extract_transactions("\n".join(lines))
@@ -95,15 +97,15 @@ def _explain_transactions(lines: list) -> int:
         rest = m.group(2).strip()
         low = ln.lower()
         skipped = next((s for s in _TXN_SKIP if s in low), None)
-        amount = _TXN_AMOUNT.search(rest)
+        amount, marker, head = _trailing_amount(rest)
         if skipped:
             verdict = f"SKIPPED  (summary row: matched {skipped!r})"
-        elif not amount:
+        elif amount is None:
             verdict = "REJECTED (no amount at end of line)"
         else:
-            desc = rest[: amount.start()].strip(" .-\t")
+            desc = _LEADING_TIME.sub("", head.strip()).strip(" .-\t")
             verdict = (
-                f"OK  {merchant_of(desc)} / {amount.group(1)}"
+                f"OK  {merchant_of(desc)} / {amount:,.2f}{' ' + marker.upper() if marker else ''}"
                 if desc else "REJECTED (no description before the amount)"
             )
         print(f"  {ln[:88]}\n     -> {verdict}")
@@ -187,6 +189,7 @@ def main() -> int:
     print(f"points earned  : {guess_points(text) or dash}")
     print(f"period start   : {start or dash}")
     print(f"period end     : {end or dash}")
+    print(f"suggested note : {guess_note(start, end) or dash}")
 
     if args.transactions:
         return _explain_transactions(lines)

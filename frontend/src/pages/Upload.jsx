@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { rupee } from "../format.js";
-import { Alert, Button, Chip, Combobox, EmptyState, Field, Input, Spinner } from "../components/ui.jsx";
+import {
+  Alert, Button, Chip, Combobox, DatePicker, EmptyState, Field, Input, Spinner,
+} from "../components/ui.jsx";
 
 // Two ways in: drop a statement PDF (parsed into a draft you confirm), or type the
 // figures manually. Layout follows the "Upload Statement" Stitch screen — one
@@ -25,6 +27,7 @@ export default function Upload() {
   const [duplicate, setDuplicate] = useState(null); // 409 payload
   const [saving, setSaving] = useState(false);
   const [reading, setReading] = useState(false);
+  const [noteEdited, setNoteEdited] = useState(false);
 
 
   useEffect(() => {
@@ -69,13 +72,16 @@ export default function Upload() {
       setParsed(res);
       // Only overwrite fields the parser actually found, so a partial parse
       // doesn't wipe anything already typed. Dates arrive ISO, which is what
-      // <input type="date"> expects.
+      // the themed date picker stores internally.
       setDraft((d) => ({
         ...d,
         total_spend: res.guessed_total ?? d.total_spend,
         points_earned: res.guessed_points ?? d.points_earned,
         period_start: res.period_start ?? d.period_start,
         period_end: res.period_end ?? d.period_end,
+        // Keep an explicitly typed note; otherwise name the statement from
+        // the billing-period end month detected in the PDF.
+        note: noteEdited ? d.note : (res.guessed_note ?? d.note),
       }));
       setManual(true);
       setMsg("PDF read. Check the numbers below and save.");
@@ -99,12 +105,13 @@ export default function Upload() {
         period_start: draft.period_start || null,
         period_end: draft.period_end || null,
         note: draft.note || null,
-        // Rows read from the PDF, so the Statements page can list them.
+        // Rows read from the PDF, so the Transactions page can list them.
         transactions: parsed?.transactions || [],
       }, replace);
       setParsed(null);
       setFile(null);
       setDraft({ total_spend: "", points_earned: "", period_start: "", period_end: "", note: "" });
+      setNoteEdited(false);
       // Straight to the dashboard — the updated spend and reward totals are the
       // real confirmation, so `saved` just drives a one-off banner there rather
       // than a message on a page the user is leaving.
@@ -124,7 +131,10 @@ export default function Upload() {
     }
   }
 
-  const setD = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
+  const setD = (k) => (e) => {
+    if (k === "note") setNoteEdited(true);
+    setDraft((d) => ({ ...d, [k]: e.target.value }));
+  };
 
   // What didn't come through, for the hint below. Transactions count here too:
   // a statement whose total, points and period all parse would otherwise show
@@ -299,7 +309,7 @@ export default function Upload() {
               </div>
 
               {/* Let the rows be checked before saving — they're what the
-                  Statements page will show. */}
+                  Transactions page will show. */}
               {parsed.transactions?.length > 0 && (
                 <details className="rounded border border-slate-800 bg-slate-950/60" open>
                   <summary className="cursor-pointer px-3 py-2 font-label-md text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300">
@@ -410,16 +420,39 @@ export default function Upload() {
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
               <Field label="Total spend (₹)">
-                <Input type="number" value={draft.total_spend} onChange={setD("total_spend")} required />
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={draft.total_spend}
+                  onChange={setD("total_spend")}
+                  required
+                />
               </Field>
               <Field label="Points earned" hint="Blank = estimate from spend.">
-                <Input type="number" value={draft.points_earned} onChange={setD("points_earned")} />
+                <Input
+                  type="number"
+                  step="any"
+                  value={draft.points_earned}
+                  onChange={setD("points_earned")}
+                />
               </Field>
               <Field label="Period start">
-                <Input type="date" value={draft.period_start} onChange={setD("period_start")} />
+                <DatePicker
+                  value={draft.period_start}
+                  onChange={(value) => setDraft((current) => ({
+                    ...current, period_start: value,
+                  }))}
+                  placeholder="Choose start date"
+                />
               </Field>
               <Field label="Period end">
-                <Input type="date" value={draft.period_end} onChange={setD("period_end")} />
+                <DatePicker
+                  value={draft.period_end}
+                  onChange={(value) => setDraft((current) => ({
+                    ...current, period_end: value,
+                  }))}
+                  placeholder="Choose end date"
+                />
               </Field>
               <Field className="sm:col-span-2" label="Note">
                 <Input value={draft.note} onChange={setD("note")} placeholder="e.g. May statement" />
