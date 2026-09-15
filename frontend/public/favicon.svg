@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SmartCred tab icon: a card on the app's dark slate, emerald accent to
+       match the brand. Drawn at 64x64 with heavy strokes so it stays legible
+       when Chrome renders it at 16x16. -->
+  <rect width="64" height="64" rx="14" fill="#0b1120"/>
+  <rect x="10" y="18" width="44" height="30" rx="5" fill="none" stroke="#10b981" stroke-width="4"/>
+  <rect x="10" y="25" width="44" height="7" fill="#10b981"/>
+  <rect x="16" y="38" width="12" height="4" rx="2" fill="#10b981" opacity="0.85"/>
+  <rect x="32" y="38" width="7" height="4" rx="2" fill="#10b981" opacity="0.5"/>
+</svg>
